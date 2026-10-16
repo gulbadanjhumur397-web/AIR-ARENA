@@ -431,8 +431,10 @@ describe('TxLINE Day 1 snapshot storage', () => {
     it('excludes stale ESPN fallback fixtures from TxLINE fixture lists', async () => {
         const originalToken = process.env.TXLINE_API_TOKEN;
         const originalAutoSync = process.env.TXLINE_FIXTURE_AUTO_SYNC_ON_LIST;
+        const originalCompetitionIds = process.env.TXLINE_FIXTURE_COMPETITION_IDS;
         process.env.TXLINE_API_TOKEN = 'test-token';
         process.env.TXLINE_FIXTURE_AUTO_SYNC_ON_LIST = 'false';
+        process.env.TXLINE_FIXTURE_COMPETITION_IDS = '33';
 
         try {
             fixtures.push(
@@ -442,7 +444,7 @@ describe('TxLINE Day 1 snapshot storage', () => {
                     sport: 'baseball',
                     homeTeam: 'Fallback Home',
                     awayTeam: 'Fallback Away',
-                    startsAt: new Date('2026-07-01T10:00:00.000Z'),
+                    startsAt: new Date(Date.now() + 60 * 60 * 1000),
                     status: 'final',
                     raw: { source: 'espn_scoreboard_fallback' },
                     createdAt: new Date('2026-07-01T09:00:00.000Z'),
@@ -454,9 +456,9 @@ describe('TxLINE Day 1 snapshot storage', () => {
                     sport: 'football',
                     homeTeam: 'Argentina',
                     awayTeam: 'Cape Verde',
-                    startsAt: new Date('2026-07-03T10:00:00.000Z'),
+                    startsAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
                     status: '1',
-                    raw: { source: 'txline' },
+                    raw: { source: 'txline', CompetitionId: 33 },
                     createdAt: new Date('2026-07-03T09:00:00.000Z'),
                     updatedAt: new Date('2026-07-03T09:00:00.000Z'),
                 },
@@ -476,6 +478,8 @@ describe('TxLINE Day 1 snapshot storage', () => {
             else process.env.TXLINE_API_TOKEN = originalToken;
             if (originalAutoSync === undefined) delete process.env.TXLINE_FIXTURE_AUTO_SYNC_ON_LIST;
             else process.env.TXLINE_FIXTURE_AUTO_SYNC_ON_LIST = originalAutoSync;
+            if (originalCompetitionIds === undefined) delete process.env.TXLINE_FIXTURE_COMPETITION_IDS;
+            else process.env.TXLINE_FIXTURE_COMPETITION_IDS = originalCompetitionIds;
         }
     });
 });

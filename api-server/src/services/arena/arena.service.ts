@@ -477,14 +477,28 @@ export async function listTxlineFixtures(limit = 50): Promise<any[]> {
     await maybeAutoSyncFixtures();
     const cappedLimit = Math.min(Math.max(limit, 1), 100);
     const activeSource = txlineActiveFixtureSource();
+    const snapshotOptions = fixtureSnapshotOptions();
+    const allowedCompetitionIds = new Set(snapshotOptions.competitionIds);
+    const startsAfterMs = snapshotOptions.startsAfter.getTime();
+    const startsBeforeMs = snapshotOptions.startsBefore.getTime();
     const candidates = await prismaAny.arenaFixture.findMany({
         orderBy: [{ startsAt: 'asc' }, { createdAt: 'desc' }],
-        take: Math.max(cappedLimit, 500),
+        take: Math.max(cappedLimit, Math.min(snapshotOptions.limit * 10, 5_000)),
     });
     return candidates
         .filter((row: any) => String(row?.raw?.source || '') !== 'espn_scoreboard_fallback')
         // Live Sport board should never mix deterministic demo-replay fixtures with TxLINE.
         .filter((row: any) => !isDemoReplayFixture(row))
+        .filter((row: any) => {
+            const startsAtMs = row?.startsAt ? new Date(row.startsAt).getTime() : Number.NaN;
+            return Number.isFinite(startsAtMs) && startsAtMs >= startsAfterMs && startsAtMs <= startsBeforeMs;
+        })
+        .filter((row: any) => {
+            if (allowedCompetitionIds.size === 0) return true;
+            const raw = asRecord(row?.raw);
+            const competitionId = String(raw.CompetitionId ?? raw.competitionId ?? raw.competition_id ?? '');
+            return allowedCompetitionIds.has(competitionId);
+        })
         .sort((left: any, right: any) => {
             const leftSource = String(left?.raw?.source || '');
             const rightSource = String(right?.raw?.source || '');
