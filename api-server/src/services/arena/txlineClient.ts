@@ -366,9 +366,49 @@ export function normalizeFixtureStatus(raw: Record<string, unknown>, startsAt?: 
     return 'unknown';
 }
 
-export function normalizeFixturesPayload(payload: unknown): TxlineFixture[] {
+export interface TxlineFixtureSnapshotOptions {
+    startsAfter?: Date;
+    startsBefore?: Date;
+    competitionIds?: string[];
+    limit?: number;
+}
+
+export function normalizeFixturesPayload(payload: unknown, options: TxlineFixtureSnapshotOptions = {}): TxlineFixture[] {
     const rows = firstArray(payload, ['fixtures', 'data.fixtures', 'data', 'items', 'results']);
-    return rows
+    const competitionIds = new Set((options.competitionIds || []).map((value) => String(value).trim()).filter(Boolean));
+    const startsAfterMs = options.startsAfter?.getTime();
+    const startsBeforeMs = options.startsBefore?.getTime();
+    const hasStartWindow = Number.isFinite(startsAfterMs) || Number.isFinite(startsBeforeMs);
+    const limit = Number.isFinite(options.limit)
+        ? Math.max(1, Math.floor(Number(options.limit)))
+        : Number.POSITIVE_INFINITY;
+
+    const selectedRows = rows
+        .filter((row) => {
+            const raw = asRecord(row);
+            if (competitionIds.size > 0) {
+                const competitionId = firstString(raw, ['CompetitionId', 'competitionId', 'competition_id']);
+                if (!competitionIds.has(competitionId)) return false;
+            }
+            if (!hasStartWindow) return true;
+            const startsAt = firstDate(raw, ['StartTime', 'startsAt', 'startTime', 'start_time', 'scheduledAt']);
+            if (!startsAt) return false;
+            const startsAtMs = startsAt.getTime();
+            if (Number.isFinite(startsAfterMs) && startsAtMs < Number(startsAfterMs)) return false;
+            if (Number.isFinite(startsBeforeMs) && startsAtMs > Number(startsBeforeMs)) return false;
+            return true;
+        });
+
+    if (hasStartWindow) {
+        selectedRows.sort((left, right) => {
+            const leftDate = firstDate(asRecord(left), ['StartTime', 'startsAt', 'startTime', 'start_time', 'scheduledAt']);
+            const rightDate = firstDate(asRecord(right), ['StartTime', 'startsAt', 'startTime', 'start_time', 'scheduledAt']);
+            return (leftDate?.getTime() || Number.MAX_SAFE_INTEGER) - (rightDate?.getTime() || Number.MAX_SAFE_INTEGER);
+        });
+    }
+
+    return selectedRows
+        .slice(0, limit)
         .map((row): TxlineFixture | null => {
             const raw = asRecord(row);
             const fixtureId = firstString(raw, ['FixtureId', 'fixtureId', 'fixture_id', 'id', 'matchId', 'MatchId', 'eventId', 'EventId']);
@@ -506,8 +546,8 @@ export function normalizeScoresPayload(payload: unknown, fallbackFixtureId?: str
         .filter((item): item is TxlineScoreUpdate => Boolean(item));
 }
 
-export async function fetchFixturesSnapshot(): Promise<TxlineFixture[]> {
-    return normalizeFixturesPayload(await fetchJson('/api/fixtures/snapshot'));
+export async function fetchFixturesSnapshot(options: TxlineFixtureSnapshotOptions = {}): Promise<TxlineFixture[]> {
+    return normalizeFixturesPayload(await fetchJson('/api/fixtures/snapshot'), options);
 }
 
 export async function fetchOddsSnapshot(fixtureId: string): Promise<TxlineOddsUpdate[]> {

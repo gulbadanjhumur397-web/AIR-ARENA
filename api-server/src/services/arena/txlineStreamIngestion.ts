@@ -17,6 +17,7 @@ type IngestionChannelKind = 'snapshot' | 'sse';
 interface StreamState {
     endpoint: string;
     kind: IngestionChannelKind;
+    enabled?: boolean;
     connected: boolean;
     events: number;
     updates: number;
@@ -59,6 +60,7 @@ const state: IngestionState = {
     fixtures: {
         endpoint: '/api/fixtures/snapshot',
         kind: 'snapshot',
+        enabled: true,
         connected: false,
         events: 0,
         updates: 0,
@@ -80,7 +82,7 @@ const state: IngestionState = {
         reconnects: 0,
     },
     oddsHydration: {
-        enabled: true,
+        enabled: false,
         running: false,
         cursor: 0,
         lastFixtureIds: [],
@@ -103,6 +105,10 @@ function fixtureSyncIntervalMs(): number {
     return Math.max(Number(process.env.TXLINE_FIXTURE_SYNC_INTERVAL_MS) || 120_000, 30_000);
 }
 
+function fixtureSyncEnabled(): boolean {
+    return (process.env.TXLINE_FIXTURE_SYNC_ENABLED || 'true').toLowerCase() !== 'false';
+}
+
 function oddsHydrationIntervalMs(): number {
     return Math.max(Number(process.env.TXLINE_ODDS_HYDRATION_INTERVAL_MS) || 4_000, 2_000);
 }
@@ -112,7 +118,7 @@ function oddsHydrationBatchSize(): number {
 }
 
 function oddsHydrationEnabled(): boolean {
-    return (process.env.TXLINE_ODDS_HYDRATION_ENABLED || 'true').toLowerCase() !== 'false';
+    return (process.env.TXLINE_ODDS_HYDRATION_ENABLED || 'false').toLowerCase() === 'true';
 }
 
 function sleep(ms: number): Promise<void> {
@@ -299,6 +305,7 @@ export function startTxlineIngestion(): IngestionState {
     state.stoppedAt = undefined;
     state.mode = txlineAuthConfigured() ? 'txline_stream' : 'unconfigured';
     state.fixtures.lastError = undefined;
+    state.fixtures.enabled = fixtureSyncEnabled();
     state.odds.lastError = undefined;
     state.scores.lastError = undefined;
     state.oddsHydration.enabled = oddsHydrationEnabled();
@@ -313,10 +320,14 @@ export function startTxlineIngestion(): IngestionState {
         return cloneState();
     }
 
-    void syncFixtureSnapshot();
-    fixtureSyncInterval = setInterval(() => {
+    if (fixtureSyncEnabled()) {
         void syncFixtureSnapshot();
-    }, fixtureSyncIntervalMs());
+        fixtureSyncInterval = setInterval(() => {
+            void syncFixtureSnapshot();
+        }, fixtureSyncIntervalMs());
+    } else {
+        state.fixtures.connected = false;
+    }
 
     if (oddsHydrationEnabled()) {
         void hydrateFixtureOddsBatch();

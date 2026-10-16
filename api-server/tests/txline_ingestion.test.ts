@@ -35,7 +35,14 @@ async function eventually(assertion: () => void): Promise<void> {
 }
 
 describe('TxLINE ingestion status', () => {
+    let originalFixtureSyncEnabled: string | undefined;
+    let originalOddsHydrationEnabled: string | undefined;
+
     beforeEach(() => {
+        originalFixtureSyncEnabled = process.env.TXLINE_FIXTURE_SYNC_ENABLED;
+        originalOddsHydrationEnabled = process.env.TXLINE_ODDS_HYDRATION_ENABLED;
+        process.env.TXLINE_FIXTURE_SYNC_ENABLED = 'true';
+        process.env.TXLINE_ODDS_HYDRATION_ENABLED = 'false';
         vi.resetModules();
         syncFixturesFromTxlineMock.mockResolvedValue({ count: 13, fixtures: [] });
         readTxlineSseStreamMock.mockImplementation((_endpoint: string, options: { signal: AbortSignal }) => new Promise<void>((resolve) => {
@@ -46,6 +53,10 @@ describe('TxLINE ingestion status', () => {
     afterEach(async () => {
         const service = await import('../src/services/arena/txlineStreamIngestion');
         service.stopTxlineIngestion();
+        if (originalFixtureSyncEnabled === undefined) delete process.env.TXLINE_FIXTURE_SYNC_ENABLED;
+        else process.env.TXLINE_FIXTURE_SYNC_ENABLED = originalFixtureSyncEnabled;
+        if (originalOddsHydrationEnabled === undefined) delete process.env.TXLINE_ODDS_HYDRATION_ENABLED;
+        else process.env.TXLINE_ODDS_HYDRATION_ENABLED = originalOddsHydrationEnabled;
         vi.clearAllMocks();
     });
 
@@ -68,5 +79,20 @@ describe('TxLINE ingestion status', () => {
         });
 
         expect(syncFixturesFromTxlineMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('can keep SSE ingestion running while fixture snapshots are disabled', async () => {
+        process.env.TXLINE_FIXTURE_SYNC_ENABLED = 'false';
+        vi.resetModules();
+        const service = await import('../src/services/arena/txlineStreamIngestion');
+
+        const started = service.startTxlineIngestion();
+
+        expect(started.running).toBe(true);
+        expect(started.fixtures.enabled).toBe(false);
+        expect(syncFixturesFromTxlineMock).not.toHaveBeenCalled();
+        await eventually(() => {
+            expect(readTxlineSseStreamMock).toHaveBeenCalledTimes(2);
+        });
     });
 });

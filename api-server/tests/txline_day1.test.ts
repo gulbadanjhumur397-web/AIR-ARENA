@@ -41,6 +41,22 @@ describe('TxLINE Day 1 snapshot normalization', () => {
         expect(fixtures[0].raw).toHaveProperty('merkleRoot', 'root-abc');
     });
 
+    it('filters oversized fixture snapshots before normalization', () => {
+        const fixtures = normalizeFixturesPayload([
+            { FixtureId: 1, CompetitionId: 33, StartTime: '2026-10-17T00:00:00.000Z' },
+            { FixtureId: 2, CompetitionId: 999, StartTime: '2026-10-17T01:00:00.000Z' },
+            { FixtureId: 3, CompetitionId: 33, StartTime: '2026-12-01T00:00:00.000Z' },
+            { FixtureId: 4, CompetitionId: 33, StartTime: '2026-10-18T00:00:00.000Z' },
+        ], {
+            startsAfter: new Date('2026-10-16T00:00:00.000Z'),
+            startsBefore: new Date('2026-11-01T00:00:00.000Z'),
+            competitionIds: ['33'],
+            limit: 1,
+        });
+
+        expect(fixtures.map((fixture) => fixture.fixtureId)).toEqual(['1']);
+    });
+
     it('maps TxLINE fixture statuses into AIR OTC buckets', () => {
         const fixtures = normalizeFixturesPayload([
             {

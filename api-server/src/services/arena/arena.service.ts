@@ -29,11 +29,28 @@ let lastFixtureAutoSyncAt = 0;
 let fixtureAutoSyncPromise: Promise<unknown> | null = null;
 
 function fixtureAutoSyncEnabled(): boolean {
-    return (process.env.TXLINE_FIXTURE_AUTO_SYNC_ON_LIST || 'true').toLowerCase() !== 'false';
+    return (process.env.TXLINE_FIXTURE_AUTO_SYNC_ON_LIST || 'false').toLowerCase() === 'true';
 }
 
 function fixtureAutoSyncIntervalMs(): number {
     return Math.max(Number(process.env.TXLINE_FIXTURE_AUTO_SYNC_INTERVAL_MS) || 120_000, 30_000);
+}
+
+function fixtureSnapshotOptions() {
+    const now = Date.now();
+    const pastHours = Math.min(Math.max(Number(process.env.TXLINE_FIXTURE_PAST_HOURS) || 6, 0), 168);
+    const futureDays = Math.min(Math.max(Number(process.env.TXLINE_FIXTURE_FUTURE_DAYS) || 45, 1), 365);
+    const limit = Math.min(Math.max(Number(process.env.TXLINE_FIXTURE_SYNC_LIMIT) || 500, 1), 2_000);
+    const competitionIds = (process.env.TXLINE_FIXTURE_COMPETITION_IDS || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+    return {
+        startsAfter: new Date(now - pastHours * 60 * 60 * 1000),
+        startsBefore: new Date(now + futureDays * 24 * 60 * 60 * 1000),
+        competitionIds,
+        limit,
+    };
 }
 
 async function maybeAutoSyncFixtures(): Promise<void> {
@@ -380,7 +397,7 @@ async function updateFixtureStatusesFromScores(updates: TxlineScoreUpdate[]): Pr
 }
 
 export async function syncFixturesFromTxline(): Promise<{ count: number; fixtures: TxlineFixture[] }> {
-    const fixtures = await fetchFixturesSnapshot();
+    const fixtures = await fetchFixturesSnapshot(fixtureSnapshotOptions());
     await upsertFixtures(fixtures);
     return { count: fixtures.length, fixtures };
 }
