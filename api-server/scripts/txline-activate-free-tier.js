@@ -73,7 +73,7 @@ function parseSecretKey(value) {
     }
 }
 
-function chooseKeypair() {
+function chooseKeypair({ allowGenerate = false } = {}) {
     const names = [
         'TXLINE_WALLET_PRIVATE_KEY',
         'AIR_OTC_WALLET_PRIVATE_KEY',
@@ -92,7 +92,36 @@ function chooseKeypair() {
         }
     }
 
-    throw new Error(`No valid wallet private key found. Set one of: ${names.join(', ')}`);
+    if (allowGenerate) {
+        return { source: 'generated', keypair: Keypair.generate() };
+    }
+
+    throw new Error(`No valid wallet private key found. Set one of: ${names.join(', ')}, or set TXLINE_GENERATE_WALLET=true on devnet.`);
+}
+
+async function ensureWalletBalance({ connection, keypair, network }) {
+    const minimumLamports = 10_000_000;
+    let balanceLamports = await connection.getBalance(keypair.publicKey, 'confirmed');
+    if (balanceLamports >= minimumLamports) return balanceLamports;
+
+    if (network !== 'devnet' || process.env.TXLINE_DEVNET_AIRDROP !== 'true') {
+        throw new Error(`Wallet ${keypair.publicKey.toBase58()} has too little SOL for fees on ${network}.`);
+    }
+
+    const airdropLamports = 100_000_000;
+    const latestBlockhash = await connection.getLatestBlockhash('confirmed');
+    const signature = await connection.requestAirdrop(keypair.publicKey, airdropLamports);
+    await connection.confirmTransaction({
+        signature,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+    }, 'confirmed');
+
+    balanceLamports = await connection.getBalance(keypair.publicKey, 'confirmed');
+    if (balanceLamports < minimumLamports) {
+        throw new Error(`Devnet airdrop completed but wallet ${keypair.publicKey.toBase58()} still has too little SOL.`);
+    }
+    return balanceLamports;
 }
 
 function assertNetworkMatch(network, apiOrigin) {
@@ -262,6 +291,7 @@ function updateEnvFile(filePath, updates) {
         }
     }
     fs.writeFileSync(filePath, content);
+    fs.chmodSync(filePath, 0o600);
 }
 
 async function main() {
@@ -299,13 +329,18 @@ async function main() {
     }
     if (!Number.isInteger(durationWeeks) || durationWeeks < 1 || durationWeeks > 52) throw new Error('TXLINE_DURATION_WEEKS must be 1-52.');
 
-    const { source, keypair } = chooseKeypair();
+    const allowGenerateWallet = network === 'devnet' && process.env.TXLINE_GENERATE_WALLET === 'true';
+    const { source, keypair } = chooseKeypair({ allowGenerate: allowGenerateWallet });
     const wallet = keypair.publicKey.toBase58();
-    const connection = new Connection(rpcUrl, 'confirmed');
-    const balanceLamports = await connection.getBalance(keypair.publicKey, 'confirmed');
-    if (balanceLamports < 10_000_000) {
-        throw new Error(`Wallet ${wallet} has too little SOL for fees on ${network}.`);
+    if (saveEnv && source === 'generated') {
+        // Persist before requesting funds so a failed faucet call can be retried
+        // against the same wallet without exposing its private key.
+        updateEnvFile(envFile, {
+            TXLINE_WALLET_PRIVATE_KEY: bs58.encode(keypair.secretKey),
+        });
     }
+    const connection = new Connection(rpcUrl, 'confirmed');
+    await ensureWalletBalance({ connection, keypair, network });
 
     const programId = new PublicKey(networkConfig.programId);
     const txlTokenMint = new PublicKey(networkConfig.txlTokenMint);
