@@ -250,14 +250,15 @@ describe('CORS Enforcement', () => {
 
 describe('Rate Limiting', () => {
     it('returns rate limit headers', async () => {
-        const { headers } = await req('GET', '/health');
+        // /health is deliberately exempt for platform health checks.
+        const { headers } = await req('GET', '/this-route-does-not-exist');
         const limit = headers.get('ratelimit-limit') || headers.get('x-ratelimit-limit');
         expect(limit).toBeTruthy();
     });
 
     it('rate limit remaining decreases with requests', async () => {
-        const { headers: h1 } = await req('GET', '/health');
-        const { headers: h2 } = await req('GET', '/health');
+        const { headers: h1 } = await req('GET', '/this-route-does-not-exist');
+        const { headers: h2 } = await req('GET', '/this-route-does-not-exist');
         const r1 = parseInt(h1.get('ratelimit-remaining') || '100');
         const r2 = parseInt(h2.get('ratelimit-remaining') || '100');
         expect(r2).toBeLessThanOrEqual(r1);

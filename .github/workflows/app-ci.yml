@@ -1,0 +1,74 @@
+name: AIR Arena App CI
+
+on:
+  pull_request:
+    paths:
+      - "api-server/**"
+      - "frontend/**"
+      - "mcp/air-otc-server/**"
+      - ".github/workflows/app-ci.yml"
+  push:
+    paths:
+      - "api-server/**"
+      - "frontend/**"
+      - "mcp/air-otc-server/**"
+      - ".github/workflows/app-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: api-server/package-lock.json
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run typecheck
+      - run: npm test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      NEXT_PUBLIC_API_URL: https://api.example.invalid
+      NEXT_PUBLIC_MCP_URL: https://mcp.example.invalid/mcp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  mcp:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp/air-otc-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mcp/air-otc-server/package-lock.json
+      - run: npm ci
+      - run: npm test

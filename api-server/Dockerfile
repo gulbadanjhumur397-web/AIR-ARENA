@@ -20,6 +20,7 @@ ENV PRISMA_HIDE_UPDATE_MESSAGE="true"
 
 EXPOSE 3000
 
-# Apply committed migrations first. Fall back to a non-destructive schema sync
-# for legacy Railway databases that were originally bootstrapped with db push.
-CMD ["sh", "-c", "(npx prisma migrate deploy || npx prisma db push) && npx ts-node src/server.ts"]
+# This repository's migration history starts after the original schema, so a
+# fresh database cannot replay it from empty. Keep Railway startup repeatable
+# with Prisma's non-destructive schema sync until a baseline migration exists.
+CMD ["sh", "-c", "npx prisma db push && npx ts-node src/server.ts"]

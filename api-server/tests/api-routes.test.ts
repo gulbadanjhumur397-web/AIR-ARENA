@@ -501,7 +501,9 @@ describe('Simulate Deal', () => {
 
 describe('Rate Limiting', () => {
     it('rate limit headers are present on responses', async () => {
-        const { headers } = await req('GET', '/health');
+        // Health and public live-data reads are intentionally exempt so
+        // platform probes and the live board cannot be throttled.
+        const { headers } = await req('GET', '/this-route-does-not-exist');
         // Express-rate-limit sets these headers
         const rlLimit = headers.get('ratelimit-limit') || headers.get('x-ratelimit-limit');
         const rlRemaining = headers.get('ratelimit-remaining') || headers.get('x-ratelimit-remaining');
